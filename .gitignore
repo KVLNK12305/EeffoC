@@ -12,14 +12,13 @@
 *.dll
 *.so
 *.dylib
-
-# Go test binaries
 *.test
 
-# Go coverage
+# Coverage
 *.out
+coverage/
 
-# Dependency directories (if used)
+# Dependency directories (only if you vendor)
 vendor/
 
 # Logs
@@ -34,7 +33,15 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+*.swx
 
 # Temporary files
 tmp/
-temp/.env
+temp/
+
+# n8n (if you export workflows locally later)
+*.n8n.json
+
+# Misc
+*.bak
+*.tmp
