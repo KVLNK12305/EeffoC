@@ -22,8 +22,14 @@ var (
 )
 
 type Payload struct {
-	Content string `json:"content"`
-	Author  string `json:"author"`
+	Content   string `json:"content"`
+	Author    string `json:"author"`
+	ChannelID string `json:"channel_id"`
+}
+
+type ResponsePayload struct {
+	ChannelID string `json:"channel_id"`
+	Message   string `json:"message"`
 }
 
 func main() {
@@ -56,6 +62,12 @@ func main() {
 	if err != nil {
 		log.Fatal("Error opening connection:", err)
 	}
+
+	go func() {
+		http.HandleFunc("/respond", responseHandler(dg))
+		log.Println("Response server running on :8080")
+		log.Fatal(http.ListenAndServe(":8080", nil))
+	}()
 
 	log.Println("Bot is running. Press CTRL-C to exit.")
 
@@ -107,8 +119,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	log.Println("Received:", cleanContent)
 
 	payload := Payload{
-		Content: cleanContent,
-		Author:  m.Author.Username,
+		Content:   cleanContent,
+		Author:    m.Author.Username,
+		ChannelID: m.ChannelID,
 	}
 
 	body, err := json.Marshal(payload)
@@ -136,5 +149,26 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		log.Printf("Webhook returned non-OK status: %s\n", resp.Status)
 	} else {
 		log.Println("Webhook delivered successfully.")
+	}
+}
+
+func responseHandler(s *discordgo.Session) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var payload ResponsePayload
+
+		err := json.NewDecoder(r.Body).Decode(&payload)
+		if err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		_, err = s.ChannelMessageSend(payload.ChannelID, payload.Message)
+		if err != nil {
+			log.Println("Error sending message:", err)
+			http.Error(w, "Failed to send message", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
 	}
 }
