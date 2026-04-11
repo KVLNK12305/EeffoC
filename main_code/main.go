@@ -18,7 +18,7 @@ import (
 var (
 	WebhookURL string
 	// Reuse a single HTTP client globally
-	httpClient = &http.Client{Timeout: 5 * time.Second}
+	httpClient = &http.Client{Timeout: 15 * time.Second}
 )
 
 type Payload struct {
@@ -78,6 +78,20 @@ func main() {
 
 	log.Println("Shutting down cleanly...")
 	dg.Close()
+}
+
+func sendLongMessage(s *discordgo.Session, channelID, message string) {
+	const maxLen = 2000
+
+	for len(message) > maxLen {
+		part := message[:maxLen]
+		s.ChannelMessageSend(channelID, part)
+		message = message[maxLen:]
+	}
+
+	if len(message) > 0 {
+		s.ChannelMessageSend(channelID, message)
+	}
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -140,15 +154,21 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Use the global client
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		log.Println("Webhook POST error:", err)
+		log.Println("Webhook error:", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		log.Printf("Webhook returned non-OK status: %s\n", resp.Status)
-	} else {
-		log.Println("Webhook delivered successfully.")
+	var result map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		log.Println("Decode error:", err)
+		return
+	}
+
+	// Send response back to Discord
+	if msg, ok := result["message"].(string); ok && msg != "" {
+		sendLongMessage(s, m.ChannelID, msg)
 	}
 }
 
@@ -162,12 +182,7 @@ func responseHandler(s *discordgo.Session) http.HandlerFunc {
 			return
 		}
 
-		_, err = s.ChannelMessageSend(payload.ChannelID, payload.Message)
-		if err != nil {
-			log.Println("Error sending message:", err)
-			http.Error(w, "Failed to send message", http.StatusInternalServerError)
-			return
-		}
+		sendLongMessage(s, payload.ChannelID, payload.Message)
 
 		w.WriteHeader(http.StatusOK)
 	}
